@@ -774,146 +774,218 @@ function SemanaDesktop({ theme = 'light', onTab, onTheme }) {
 }
 
 function ResumenDesktop({ theme = 'light', onTab, onTheme }) {
-  const categories = window.useCategories();
-  const getCatColor = (id) => categories.find(c => c.id === id)?.color || '#999';
-
-  const allDays = window.useDays();
-  const activities = window.useActivities();
-
-  const today = new Date();
-  const currentDayOfWeek = today.getDay(); // 0 is Sun
-  const diffToMonday = today.getDate() - currentDayOfWeek + (currentDayOfWeek === 0 ? -6 : 1);
-  const monday = new Date(today.setDate(diffToMonday));
-  monday.setHours(0,0,0,0);
-
-  const weekDates = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    weekDates.push(d);
+  const [rango, setRango] = React.useState(() => localStorage.getItem('kairos:resumen:rango') || 'semana');
+  const [showDropdown, setShowDropdown] = React.useState(false);
+  
+  const allDays = window.useDays() || {};
+  
+  const saveRango = (val) => {
+    setRango(val);
+    localStorage.setItem('kairos:resumen:rango', val);
+    setShowDropdown(false);
+  };
+  
+  const getRangoLabel = () => {
+    if (rango === 'semana') return 'Esta semana';
+    if (rango === 'mes') return 'Este mes';
+    if (rango === '12semanas') return 'Últimas 12 semanas';
+    return 'Esta semana';
+  };
+  
+  // Count overall days with activities logged to determine empty state
+  const totalDaysWithActivityOverall = React.useMemo(() => {
+    let count = 0;
+    Object.keys(allDays).forEach(dStr => {
+      const dData = allDays[dStr];
+      if (dData && dData.blocks && dData.blocks.some(b => !b.locked && !b.skipped && b.type)) {
+        count++;
+      }
+    });
+    return count;
+  }, [allDays]);
+  
+  const data = window.trackingUtils.useResumenData(rango);
+  
+  if (totalDaysWithActivityOverall < 7) {
+    return (
+      <DesktopShell theme={theme} active="resumen" onTab={onTab} onTheme={onTheme} title="Resumen">
+        <EmptyResumenNoData theme={theme} daysCount={totalDaysWithActivityOverall} desktop={true} />
+      </DesktopShell>
+    );
   }
   
-  const dateStrings = weekDates.map(d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
-  const dayLabels = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
-  
-  const realTodayStr = new Date().toDateString();
-  let foundToday = false;
-
-  const daysDataList = weekDates.map((d, i) => {
-    const dateStr = dateStrings[i];
-    const isToday = d.toDateString() === realTodayStr;
-    if (isToday) foundToday = true;
-    const isFuture = !isToday && foundToday; // Simple check since we iterate left to right
-    
-    const dayData = allDays[dateStr] || { blocks: [] };
-    const completionData = window.trackingUtils.calculateDayCompletion(dayData.blocks, activities, isFuture);
-    return { ...completionData, l: dayLabels[i], isToday };
-  });
-
-  const weekCompletion = window.trackingUtils.calculateWeekCompletion(daysDataList);
-
-  const dailyBars = weekCompletion.dailyPcts.map(d => ({
-    l: d.l,
-    pct: d.displayPct,
-    cat: d.dominantCategory,
-    isFuture: d.isFuture,
-    isFree: d.planlessOrFree
-  }));
-
-  const activeHours = weekCompletion.dailyPcts.reduce((acc, curr) => acc + (curr.isFuture || curr.planlessOrFree ? 0 : curr.completedTime), 0) / 60;
-
-  const streaks = [
-    { cat: 'fisico', days: 7,  label: 'Físico' },
-    { cat: 'estudio',    days: 12, label: 'Estudio' },
-    { cat: 'creativo', days: 3,  label: 'Creativo' },
-  ];
-
   return (
     <DesktopShell theme={theme} active="resumen" onTab={onTab} onTheme={onTheme}
       title="Resumen"
-      subtitle="5 — 11 de mayo"
+      subtitle={`${data.desdeStr} — ${data.hastaStr}`}
       headerRight={
-        <button style={{background:'var(--k-card)', border:'1px solid var(--k-border)', borderRadius:8, padding:'8px 12px', fontSize:13, fontWeight:500, display:'flex', alignItems:'center', gap:6, cursor:'pointer'}}>
-          Esta semana <Icon.ChevD/>
-        </button>
+        <div style={{position: 'relative'}}>
+          <button 
+            onClick={() => setShowDropdown(!showDropdown)}
+            style={{
+              background:'var(--k-card)', 
+              border:'1px solid var(--k-border)', 
+              borderRadius:8, 
+              padding:'8px 12px', 
+              fontSize:13, 
+              fontWeight:500, 
+              display:'flex', 
+              alignItems:'center', 
+              gap:6, 
+              cursor:'pointer',
+              color: 'var(--k-text)'
+            }}
+          >
+            {getRangoLabel()} <Icon.ChevD/>
+          </button>
+          
+          {showDropdown && (
+            <>
+              <div 
+                onClick={() => setShowDropdown(false)} 
+                style={{position: 'fixed', inset: 0, zIndex: 999, background: 'transparent'}}
+              />
+              <div 
+                style={{
+                  position: 'absolute', 
+                  right: 0, 
+                  top: 38, 
+                  background: 'var(--k-card)', 
+                  border: '1px solid var(--k-border)', 
+                  borderRadius: 12, 
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.12)', 
+                  padding: 6, 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  zIndex: 1000,
+                  minWidth: 160,
+                  animation: 'k-fade-in 0.15s ease'
+                }}
+              >
+                {[
+                  { id: 'semana', label: 'Esta semana' },
+                  { id: 'mes', label: 'Este mes' },
+                  { id: '12semanas', label: 'Últimas 12 semanas' }
+                ].map(opt => (
+                  <button 
+                    key={opt.id}
+                    onClick={() => saveRango(opt.id)}
+                    style={{
+                      padding: '8px 12px',
+                      background: rango === opt.id ? 'var(--k-tint-gray)' : 'transparent',
+                      border: 'none',
+                      borderRadius: 8,
+                      textAlign: 'left',
+                      fontSize: 13,
+                      fontWeight: rango === opt.id ? 600 : 500,
+                      color: rango === opt.id ? 'var(--k-text)' : 'var(--k-text-2)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    {opt.label}
+                    {rango === opt.id && <div style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--k-text)'}}/>}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       }
     >
       <div style={{display:'grid', gridTemplateColumns:'2fr 1fr', gap:24}}>
+        {/* Left Column - Large Charts */}
         <div style={{display:'flex', flexDirection:'column', gap:24}}>
-          {/* Stats Cards */}
+          {/* Stacked Weekly Activity Chart */}
+          <ActividadSemanalCard 
+            data={data.weeklyBars}
+            avgWeeklyPct={data.avgWeeklyPct}
+            avgWeeklyHours={data.avgWeeklyHours}
+            avgWeeklyPctPrev={data.avgWeeklyPctPrev}
+            avgWeeklyHoursPrev={data.avgWeeklyHoursPrev}
+          />
+          
+          {/* Pattern Heatmap Matrix */}
+          <HeatmapCard 
+            cells={data.heatmapCells}
+            averagePct={data.heatmapAveragePct}
+          />
+          
+          {/* Insights List */}
+          <InsightsCard 
+            insights={data.insights}
+          />
+        </div>
+        
+        {/* Right Column - Side Panel KPIs & Stats */}
+        <div style={{display:'flex', flexDirection:'column', gap:24}}>
+          {/* KPI Cards */}
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
             <div className="k-card" style={{padding:24}}>
               <div style={{fontSize:12, color:'var(--k-text-3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Completado</div>
-              <div style={{fontSize:36, fontWeight:600, letterSpacing:'-0.03em'}}>{weekCompletion.weeklyPct}<span style={{fontSize:24}}>%</span></div>
-              <div style={{fontSize:14, color:'var(--k-text-2)', marginTop:6}}>Esta semana</div>
+              <div style={{fontSize:36, fontWeight:600, letterSpacing:'-0.03em'}}>{data.completado.toFixed(1)}<span style={{fontSize:24}}>%</span></div>
+              {data.completadoDelta ? (
+                <div style={{
+                  color: data.completadoDelta.isPositive ? 'var(--k-success)' : 'var(--k-error, #ef4444)', 
+                  fontSize:13, 
+                  fontWeight:500, 
+                  marginTop:6
+                }}>
+                  {data.completadoDelta.text}
+                </div>
+              ) : (
+                <div style={{color:'var(--k-text-3)', fontSize:13, marginTop:6}}>Sin período anterior</div>
+              )}
             </div>
+            
             <div className="k-card" style={{padding:24}}>
               <div style={{fontSize:12, color:'var(--k-text-3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Horas activas</div>
-              <div style={{fontSize:36, fontWeight:600, letterSpacing:'-0.03em'}}>{activeHours.toFixed(1)}<span style={{fontSize:24}}>h</span></div>
-              <div style={{fontSize:14, color:'var(--k-text-2)', marginTop:6}}>Tiempo enfocado</div>
+              <div style={{fontSize:36, fontWeight:600, letterSpacing:'-0.03em'}}>{data.horasActivas.toFixed(1)}<span style={{fontSize:24}}>h</span></div>
+              {data.horasDelta ? (
+                <div style={{
+                  color: data.horasDelta.isPositive ? 'var(--k-success)' : 'var(--k-error, #ef4444)', 
+                  fontSize:13, 
+                  fontWeight:500, 
+                  marginTop:6
+                }}>
+                  {data.horasDelta.text}
+                </div>
+              ) : (
+                <div style={{color:'var(--k-text-3)', fontSize:13, marginTop:6}}>Sin período anterior</div>
+              )}
             </div>
           </div>
-
-          {/* Activity Chart */}
-          <div className="k-card" style={{padding:24}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:20}}>
-              <div style={{fontSize:16, fontWeight:600}}>Actividad semanal</div>
-              <div style={{fontSize:13, color:'var(--k-text-2)'}}>% promedio</div>
-            </div>
-            <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-between', height:180, gap:16}}>
-              {dailyBars.map((b, i) => {
-                if (b.isFree) {
-                  return (
-                    <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
-                      <div style={{fontSize:12, color:'transparent', fontVariantNumeric:'tabular-nums'}}>0</div>
-                      <div style={{width:'100%', height:'4px', background: 'var(--k-border)', borderRadius:'6px 6px 0 0'}}/>
-                      <div style={{fontSize:13, color:'var(--k-text-3)', fontWeight:500}}>Libre</div>
-                    </div>
-                  );
-                }
-                
-                if (b.isFuture) {
-                  return (
-                    <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
-                      <div style={{fontSize:12, color:'var(--k-text-3)', fontVariantNumeric:'tabular-nums'}}>{b.pct}</div>
-                      <div style={{width:'100%', height:`${Math.max(b.pct, 4)}%`, border: '2px dashed var(--k-border)', borderBottom:'none', background:'transparent', borderRadius:'6px 6px 0 0', boxSizing:'border-box'}}/>
-                      <div style={{fontSize:13, color:'var(--k-text-3)', fontWeight:500}}>{b.l}</div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
-                    <div style={{fontSize:12, color:'var(--k-text-2)', fontVariantNumeric:'tabular-nums'}}>{b.pct}</div>
-                    <div style={{width:'100%', height:`${Math.max(b.pct, 4)}%`, background: getCatColor(b.cat), borderRadius:'6px 6px 0 0', transition:'height 0.3s ease'}}/>
-                    <div style={{fontSize:13, color: b.isToday ? 'var(--k-text)' : 'var(--k-text-2)', fontWeight: b.isToday ? 600 : 500}}>{b.l}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div style={{display:'flex', flexDirection:'column', gap:24}}>
-          {/* Streaks */}
+          
+          {/* Rachas por categoría */}
           <div className="k-card" style={{padding:24}}>
             <div style={{fontSize:12, color:'var(--k-text-3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:16}}>Rachas por categoría</div>
             <div style={{display:'flex', flexDirection:'column', gap:12}}>
-              {streaks.map(s => (
-                <div key={s.cat} style={{padding:'14px', background:'var(--k-tint-gray)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+              {data.streaks.map(s => (
+                <div key={s.cat} style={{padding:'14px', background:'var(--k-tint-gray)', borderRadius:12, display:'flex', alignItems:'center', justifyBetween:'space-between', justifyContent: 'space-between'}}>
                   <div style={{display:'flex', alignItems:'center', gap:12}}>
-                    <div style={{width:10, height:10, borderRadius:5, background:getCatColor(s.cat)}}/>
-                    <div style={{fontSize:14, fontWeight:500, color:'var(--k-text)'}}>{s.label}</div>
+                    <div style={{width:10, height:10, borderRadius:5, background: s.color}}/>
+                    <div style={{fontSize:14, fontWeight:600, color:'var(--k-text)'}}>{s.label}</div>
                   </div>
                   <div style={{fontSize:18, fontWeight:600, fontVariantNumeric:'tabular-nums', letterSpacing:'-0.02em', display:'flex', alignItems:'center', gap:4}}>
                     <Icon.Flame style={{width:16, height:16, color:'#b45309'}}/>
-                    {s.days}d
+                    {s.days > 0 ? `${s.days}d` : '—'}
                   </div>
                 </div>
               ))}
+              {data.streaks.length === 0 && (
+                <div style={{textAlign: 'center', fontSize: 13, color: 'var(--k-text-3)', padding: '8px 0'}}>
+                  Inicia un hábito para medir tus rachas
+                </div>
+              )}
             </div>
           </div>
+          
+          {/* Physical Progress Photo & Stats */}
+          <ProgresoFisicoCard 
+            physicalMetrics={data.physicalMetrics}
+          />
         </div>
       </div>
     </DesktopShell>

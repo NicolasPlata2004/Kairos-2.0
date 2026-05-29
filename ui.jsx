@@ -147,6 +147,12 @@ const CAT_COLORS = {
   work: '#3b82f6',
   creative: '#f59e0b',
   other: '#6b7280',
+  // Spanish support:
+  fisico: '#10b981',
+  estudio: '#8b5cf6',
+  trabajo: '#3b82f6',
+  creativo: '#f59e0b',
+  otro: '#6b7280',
 };
 const CAT_TINTS = {
   physical: 'rgba(16,185,129,0.18)',
@@ -154,10 +160,19 @@ const CAT_TINTS = {
   work: 'rgba(59,130,246,0.18)',
   creative: 'rgba(245,158,11,0.18)',
   other: 'rgba(107,114,128,0.18)',
+  // Spanish support:
+  fisico: 'rgba(16,185,129,0.18)',
+  estudio: 'rgba(139,92,246,0.18)',
+  trabajo: 'rgba(59,130,246,0.18)',
+  creativo: 'rgba(245,158,11,0.18)',
+  otro: 'rgba(107,114,128,0.18)',
 };
 const CAT_LABELS = {
-  physical: 'Físico', study: 'Estudio', work: 'Trabajo', creative: 'Creativo', other: 'Otro'
+  physical: 'Físico', study: 'Estudio', work: 'Trabajo', creative: 'Creativo', other: 'Otro',
+  // Spanish support:
+  fisico: 'Físico', estudio: 'Estudio', trabajo: 'Trabajo', creativo: 'Creativo', otro: 'Otro',
 };
+
 
 function CategoryChip({ cat = 'physical', color, label }) {
   const finalColor = color || CAT_COLORS[cat] || '#999';
