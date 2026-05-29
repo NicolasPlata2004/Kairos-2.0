@@ -153,6 +153,7 @@ function useResumenData(rango) {
   const mediciones = window.useMediciones() || [];
   
   return React.useMemo(() => {
+    const realTodayStr = new Date().toDateString();
     // 1. Calculate date boundaries based on range
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -219,7 +220,6 @@ function useResumenData(rango) {
       let sumDailyPct = 0;
       let activeDaysCount = 0;
       
-      const realTodayStr = new Date().toDateString();
       let foundToday = false;
       
       dateStrings.forEach((dStr, idx) => {
