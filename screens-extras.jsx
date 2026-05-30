@@ -4,32 +4,127 @@
 // Modal: Reorganizar día
 // ─────────────────────────────────────────────
 function ModalReorganizar({ theme = 'light', onClose }) {
-  const initial = [
-    { id:'gym',    emoji:'🏋️',  name:'Gimnasio',         time:'07:00 — 08:00', state:null },
-    { id:'leer',   emoji:'📖',  name:'Leer',             time:'12:30 — 13:30', state:null },
-    { id:'correr', emoji:'🏃',  name:'Correr · 5 km',    time:'19:00 — 19:45', state:'skip' },
-    { id:'tesis',  emoji:'✏️',  name:'Tesis · capítulo', time:'14:00 — 15:30', state:null },
-    { id:'medit',  emoji:'🧘',  name:'Meditar',          time:'17:00 — 17:15', state:null },
-  ];
-  const [items, setItems] = React.useState(initial);
-  const setState = (id, state) => setItems(xs => xs.map(x => x.id === id ? {...x, state} : x));
+  // Leer bloques REALES del día de hoy desde el store
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dateStr = today.toISOString().split('T')[0];
+  const dayData = window.useDay(dateStr);
+  const settings = window.useSettings();
+  const allBlocks = dayData ? dayData.blocks : [];
+  const categories = window.useCategories();
+  const getCatColor = (id) => categories.find(c => c.id === id)?.color || '#999';
 
-  const total = items.length;
-  const changed = items.filter(x => x.state).length;
+  // Solo bloques pendientes (no hechos, no saltados, no locked)
+  const pendingBlocks = allBlocks.filter(b =>
+    !b.locked && !b.skipped && b.id && !b.id.startsWith('wake_') &&
+    !(b.type === 'check' && b.done) &&
+    !(b.type === 'quant' && b.current >= b.goal) &&
+    !(b.type === 'progress' && b.pct >= 100)
+  );
+
+  // Estado local: { blockId: 'skip' | 'move' | 'keep' | null }
+  const [actions, setActions] = React.useState({});
+  // Slot seleccionado para mover: { blockId: { date, time, timeEnd, dayLabel } }
+  const [selectedSlots, setSelectedSlots] = React.useState({});
+
+  const setAction = (blockId, action) => {
+    setActions(prev => ({ ...prev, [blockId]: action }));
+  };
+
+  const selectSlot = (blockId, slot) => {
+    setSelectedSlots(prev => ({ ...prev, [blockId]: slot }));
+  };
+
+  // Buscar slots disponibles para reagendar un bloque en los próximos 7 días
+  function findSlotsForBlock(block) {
+    const state = window.storeActions.getState();
+    const { timeToMin, minToTime, subtractInterval } = window.schedulerUtils || {};
+    if (!timeToMin) return [];
+
+    // Estimar duración del bloque
+    let durationMin = 60;
+    if (block.time && block.timeEnd && block.time !== 'Flexible') {
+      durationMin = timeToMin(block.timeEnd) - timeToMin(block.time);
+    }
+    if (durationMin <= 0) durationMin = 60;
+
+    const wakeMin = timeToMin(settings.wakeTime || '06:30');
+    const sleepMin = timeToMin(settings.sleepTime || '23:00') - 30;
+    const slots = [];
+
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const targetDate = d.toISOString().split('T')[0];
+      const targetDayData = state.days[targetDate];
+      const targetBlocks = targetDayData?.blocks || [];
+
+      // Construir slots libres del día
+      let freeSlots = wakeMin < sleepMin ? [[wakeMin + 45, sleepMin]] : [];
+      targetBlocks.forEach(b => {
+        if (b.time && b.time !== 'Flexible' && b.timeEnd) {
+          const bStart = timeToMin(b.time);
+          const bEnd = timeToMin(b.timeEnd);
+          freeSlots = subtractInterval(freeSlots, bStart - 15, bEnd + 15);
+        } else if (b.time && b.time !== 'Flexible') {
+          const bStart = timeToMin(b.time);
+          freeSlots = subtractInterval(freeSlots, bStart - 15, bStart + 75);
+        }
+      });
+
+      // Encontrar huecos donde quepa
+      freeSlots.forEach(([s, e]) => {
+        if (e - s >= durationMin) {
+          const dayLabel = d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' });
+          slots.push({
+            date: targetDate,
+            dayLabel: dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1),
+            time: minToTime(s),
+            timeEnd: minToTime(s + durationMin)
+          });
+        }
+      });
+    }
+
+    return slots.slice(0, 3);
+  }
+
+  // Aplicar todos los cambios
+  const handleApply = () => {
+    Object.entries(actions).forEach(([blockId, action]) => {
+      if (action === 'skip') {
+        window.storeActions.updateDayBlock(dateStr, blockId, { skipped: true, done: false });
+      } else if (action === 'move') {
+        const slot = selectedSlots[blockId];
+        if (slot) {
+          // Marcar original como movido
+          window.storeActions.updateDayBlock(dateStr, blockId, { skipped: true, movedTo: slot.date });
+          // Crear copia en el día destino
+          const originalBlock = allBlocks.find(b => b.id === blockId);
+          if (originalBlock) {
+            window.storeActions.addBlockToDay(slot.date, {
+              ...originalBlock,
+              id: originalBlock.id + '_moved',
+              time: slot.time,
+              timeEnd: slot.timeEnd,
+              done: false,
+              skipped: false,
+              movedFrom: dateStr
+            });
+          }
+        }
+      }
+      // 'keep' y null: no hacer nada
+    });
+    onClose();
+  };
+
+  const total = pendingBlocks.length;
+  const changed = Object.values(actions).filter(a => a && a !== 'keep').length;
 
   return (
     <PhoneFrame theme={theme}>
       <div style={{flex:1, position:'relative', overflow:'hidden'}}>
-        {/* Faded Hoy in background */}
-        <div style={{position:'absolute', inset:0, opacity:0.35}}>
-          <div style={{padding:'20px 20px', color:'var(--k-text)'}}>
-            <div style={{fontSize:22, fontWeight:600, marginBottom:6}}>Buenos días, Nicolás</div>
-            <div style={{fontSize:13, color:'var(--k-text-2)', marginBottom:18}}>Hoy · Domingo 11 de mayo</div>
-            <div className="k-card" style={{marginBottom:10, height:80}}/>
-            <div className="k-card" style={{marginBottom:10, height:80}}/>
-          </div>
-        </div>
-
         <div className="k-modal-backdrop">
           <div className="k-modal-sheet" style={{maxHeight:'90%', overflowY:'auto'}}>
             <div className="k-modal-handle"/>
@@ -47,19 +142,29 @@ function ModalReorganizar({ theme = 'light', onClose }) {
               <strong>Saltar hoy</strong> NO rompe tu racha — solo lo marca como imprevisto.
             </div>
 
+            {pendingBlocks.length === 0 && (
+              <div style={{textAlign:'center', padding:'30px 20px', color:'var(--k-text-2)', fontSize:14}}>
+                🎉 ¡Todo completado! No hay actividades pendientes.
+              </div>
+            )}
+
             <div style={{display:'flex', flexDirection:'column', gap:10, marginBottom:18}}>
-              {items.map(it => {
-                const sel = it.state;
+              {pendingBlocks.map(block => {
+                const sel = actions[block.id] || null;
+                const timeDisplay = block.time === 'Flexible'
+                  ? 'Flexible'
+                  : block.timeEnd ? `${block.time} — ${block.timeEnd}` : block.time;
+
                 return (
-                  <div key={it.id} style={{
+                  <div key={block.id} style={{
                     border:'1px solid var(--k-border)', borderRadius:12, padding:'12px 14px',
                     background:'var(--k-card)',
                   }}>
                     <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
-                      <div style={{fontSize:20}}>{it.emoji}</div>
+                      <div style={{width:8, height:36, borderRadius:4, background: getCatColor(block.cat)}} />
                       <div style={{flex:1, minWidth:0}}>
-                        <div style={{fontSize:14, fontWeight:500, color:'var(--k-text)'}}>{it.name}</div>
-                        <div style={{fontSize:11, color:'var(--k-text-3)', fontVariantNumeric:'tabular-nums'}}>{it.time}</div>
+                        <div style={{fontSize:14, fontWeight:500, color:'var(--k-text)'}}>{block.name}</div>
+                        <div style={{fontSize:11, color:'var(--k-text-3)', fontVariantNumeric:'tabular-nums'}}>{timeDisplay}</div>
                       </div>
                     </div>
                     <div style={{display:'flex', gap:6}}>
@@ -75,7 +180,7 @@ function ModalReorganizar({ theme = 'light', onClose }) {
                           neutral: { bg:'var(--k-tint-gray)',  fg:'var(--k-text)', border:'var(--k-text)' },
                         }[opt.tone] : null;
                         return (
-                          <button key={opt.id} onClick={() => setState(it.id, opt.id)}
+                          <button key={opt.id} onClick={() => setAction(block.id, opt.id)}
                             style={{
                               flex:1,
                               padding:'7px 6px',
@@ -92,16 +197,37 @@ function ModalReorganizar({ theme = 'light', onClose }) {
                       })}
                     </div>
 
-                    {sel === 'move' && (
-                      <div style={{marginTop:10, padding:'10px 12px', background:'var(--k-tint-info)', borderRadius:8, fontSize:12, color:'var(--k-text)', lineHeight:1.5}}>
-                        <div style={{fontWeight:500, marginBottom:6}}>Slots sugeridos:</div>
-                        <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
-                          {['Mar 19:00','Mié 07:00','Jue 18:00'].map(s => (
-                            <div key={s} style={{padding:'4px 8px', background:'var(--k-card)', borderRadius:6, fontSize:11, fontWeight:500}}>{s}</div>
-                          ))}
+                    {sel === 'move' && (() => {
+                      const slots = findSlotsForBlock(block);
+                      const chosen = selectedSlots[block.id];
+                      return (
+                        <div style={{marginTop:10, padding:'10px 12px', background:'var(--k-tint-info)', borderRadius:8, fontSize:12, color:'var(--k-text)', lineHeight:1.5}}>
+                          <div style={{fontWeight:500, marginBottom:6}}>Slots sugeridos:</div>
+                          {slots.length === 0 ? (
+                            <div style={{color:'var(--k-text-3)', fontSize:11}}>No hay slots disponibles en los próximos 7 días.</div>
+                          ) : (
+                            <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+                              {slots.map(s => {
+                                const isChosen = chosen && chosen.date === s.date && chosen.time === s.time;
+                                return (
+                                  <button key={s.date + s.time} onClick={() => selectSlot(block.id, s)}
+                                    style={{
+                                      padding:'4px 8px',
+                                      background: isChosen ? 'var(--k-primary)' : 'var(--k-card)',
+                                      color: isChosen ? '#fff' : 'var(--k-text)',
+                                      borderRadius:6, fontSize:11, fontWeight:500,
+                                      border: isChosen ? '1px solid var(--k-primary)' : '1px solid var(--k-border)',
+                                      cursor:'pointer'
+                                    }}>
+                                    {s.dayLabel} {s.time}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -114,7 +240,7 @@ function ModalReorganizar({ theme = 'light', onClose }) {
 
             <div style={{display:'flex', gap:10}}>
               <button onClick={onClose} className="k-btn k-btn-secondary" style={{flex:1}}>Cancelar</button>
-              <button onClick={onClose} className="k-btn k-btn-primary" style={{flex:1}}>Aplicar cambios</button>
+              <button onClick={handleApply} className="k-btn k-btn-primary" style={{flex:1}}>Aplicar cambios</button>
             </div>
           </div>
         </div>
@@ -857,8 +983,10 @@ function InsightsCard({ insights = [] }) {
 // ─────────────────────────────────────────────
 // Shared ProgresoFisicoCard component
 // ─────────────────────────────────────────────
-function ProgresoFisicoCard({ physicalMetrics = {} }) {
-  const [showEditor, setShowEditor] = React.useState(false);
+function ProgresoFisicoCard({ physicalMetrics }) {
+  const hasData = physicalMetrics && (physicalMetrics.peso != null || physicalMetrics.cintura != null || physicalMetrics.cardio != null);
+  const pm = physicalMetrics || {};
+  const [showEditor, setShowEditor] = React.useState(!hasData);
   const [pesoVal, setPesoVal] = React.useState('');
   const [cinturaVal, setCinturaVal] = React.useState('');
   const [cardioVal, setCardioVal] = React.useState('');
@@ -921,9 +1049,9 @@ function ProgresoFisicoCard({ physicalMetrics = {} }) {
     };
   };
   
-  const pesoD = getDeltaStyle(physicalMetrics.pesoDelta, 'peso');
-  const cinturaD = getDeltaStyle(physicalMetrics.cinturaDelta, 'cintura');
-  const cardioD = getDeltaStyle(physicalMetrics.cardioDelta, 'cardio');
+  const pesoD = getDeltaStyle(pm.pesoDelta || 0, 'peso');
+  const cinturaD = getDeltaStyle(pm.cinturaDelta || 0, 'cintura');
+  const cardioD = getDeltaStyle(pm.cardioDelta || 0, 'cardio');
   
   const formatDateLabel = (dateStr, fallback) => {
     if (!dateStr) return fallback;
@@ -946,9 +1074,9 @@ function ProgresoFisicoCard({ physicalMetrics = {} }) {
         <div style={{display: 'flex', gap: 6}}>
           <button 
             onClick={() => {
-              setPesoVal(physicalMetrics.peso.toString());
-              setCinturaVal(physicalMetrics.cintura.toString());
-              setCardioVal(physicalMetrics.cardio.toString());
+              setPesoVal(pm.peso != null ? pm.peso.toString() : '');
+              setCinturaVal(pm.cintura != null ? pm.cintura.toString() : '');
+              setCardioVal(pm.cardio != null ? pm.cardio.toString() : '');
               setShowEditor(true);
             }}
             style={{
@@ -989,11 +1117,11 @@ function ProgresoFisicoCard({ physicalMetrics = {} }) {
       <div style={{display: 'flex', gap: 10, marginBottom: 16}}>
         <div style={{flex: 1}}>
           <div style={{fontSize: 10, color: 'var(--k-text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em'}}>
-            Antes · {formatDateLabel(physicalMetrics.beforePhotoDate, '12 abr')}
+            Antes · {formatDateLabel(pm.beforePhotoDate, '—')}
           </div>
-          {physicalMetrics.beforePhotoUrl ? (
-            <img 
-              src={physicalMetrics.beforePhotoUrl} 
+          {pm.beforePhotoUrl ? (
+            <img
+              src={pm.beforePhotoUrl} 
               alt="Antes" 
               style={{width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 10, border: '1px solid var(--k-border)'}}
             />
@@ -1003,11 +1131,11 @@ function ProgresoFisicoCard({ physicalMetrics = {} }) {
         </div>
         <div style={{flex: 1}}>
           <div style={{fontSize: 10, color: 'var(--k-text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em'}}>
-            Ahora · {formatDateLabel(physicalMetrics.afterPhotoDate, '10 may')}
+            Ahora · {formatDateLabel(pm.afterPhotoDate, '—')}
           </div>
-          {physicalMetrics.afterPhotoUrl ? (
-            <img 
-              src={physicalMetrics.afterPhotoUrl} 
+          {pm.afterPhotoUrl ? (
+            <img
+              src={pm.afterPhotoUrl} 
               alt="Ahora" 
               style={{width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 10, border: '1px solid var(--k-border)'}}
             />
@@ -1020,17 +1148,17 @@ function ProgresoFisicoCard({ physicalMetrics = {} }) {
       <div style={{display: 'flex', gap: 12, fontSize: 12}}>
         <div style={{flex: 1}}>
           <div style={{color: 'var(--k-text-3)'}}>Peso</div>
-          <div style={{fontWeight: 600, fontSize: 14, marginTop: 2, fontVariantNumeric: 'tabular-nums'}}>{physicalMetrics.peso.toFixed(1)} kg</div>
-          <div style={{color: pesoD.color, fontSize: 11, fontWeight: 500, marginTop: 2}}>{pesoD.text}</div>
+          <div style={{fontWeight: 600, fontSize: 14, marginTop: 2, fontVariantNumeric: 'tabular-nums'}}>{pm.peso != null ? pm.peso.toFixed(1) + ' kg' : '—'}</div>
+          <div style={{color: pesoD.color, fontSize: 11, fontWeight: 500, marginTop: 2}}>{pm.peso != null ? pesoD.text : ''}</div>
         </div>
         <div style={{flex: 1}}>
           <div style={{color: 'var(--k-text-3)'}}>Cintura</div>
-          <div style={{fontWeight: 600, fontSize: 14, marginTop: 2, fontVariantNumeric: 'tabular-nums'}}>{physicalMetrics.cintura} cm</div>
-          <div style={{color: cinturaD.color, fontSize: 11, fontWeight: 500, marginTop: 2}}>{cinturaD.text}</div>
+          <div style={{fontWeight: 600, fontSize: 14, marginTop: 2, fontVariantNumeric: 'tabular-nums'}}>{pm.cintura != null ? pm.cintura + ' cm' : '—'}</div>
+          <div style={{color: cinturaD.color, fontSize: 11, fontWeight: 500, marginTop: 2}}>{pm.cintura != null ? cinturaD.text : ''}</div>
         </div>
         <div style={{flex: 1}}>
           <div style={{color: 'var(--k-text-3)'}}>Cardio</div>
-          <div style={{fontWeight: 600, fontSize: 14, marginTop: 2, fontVariantNumeric: 'tabular-nums'}}>{physicalMetrics.cardio.toFixed(1)} km</div>
+          <div style={{fontWeight: 600, fontSize: 14, marginTop: 2, fontVariantNumeric: 'tabular-nums'}}>{pm.cardio != null ? pm.cardio.toFixed(1) + ' km' : '—'}</div>
           <div style={{color: cardioD.color, fontSize: 11, fontWeight: 500, marginTop: 2}}>{cardioD.text}</div>
         </div>
       </div>

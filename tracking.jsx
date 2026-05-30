@@ -566,7 +566,18 @@ function useResumenData(rango) {
     
     // 7. Rules-based Insights Engine
     const insights = [];
-    
+
+    // Muestra mínima: si <14 días con actividad, mostrar mensaje y saltar cálculos
+    const daysWithData = Object.values(daysData).filter(d => d && d.blocks && d.blocks.some(b => !b.locked && !b.skipped && b.type)).length;
+    if (daysWithData < 14) {
+      insights.push({
+        tipo: 'insufficient_data',
+        emoji: '📊',
+        texto: <>Necesitamos al menos <strong>14 días</strong> de uso para mostrarte patrones. ¡Llevas {daysWithData}, sigue así!</>,
+        severidad: 'info'
+      });
+    }
+
     // Weekday vs. Weekend
     let sumWeekdayPct = 0, countWeekday = 0;
     let sumWeekendPct = 0, countWeekend = 0;
@@ -611,13 +622,8 @@ function useResumenData(rango) {
       }
     }
     
-    // Best Hour for category
-    insights.push({
-      tipo: 'best_time',
-      emoji: '⏰',
-      texto: <>Tu mejor hora para <strong>Físico</strong> es las <strong>7am</strong>. Después de las 6pm baja al <strong>30%</strong>.</>,
-      severidad: 'success'
-    });
+    // Best Hour for category — TODO: calcular cuando tengamos bloques con horas reales (v1.5)
+    // Eliminado: insight hardcoded "Tu mejor hora para Físico es las 7am"
     
     // Mood Correlation
     let goodMoodPctSum = 0, goodMoodCount = 0;
@@ -671,14 +677,8 @@ function useResumenData(rango) {
         texto: <>Cuando reportas humor positivo (🤩/😊), tu cumplimiento promedio sube un <strong>{diff}%</strong>.</>,
         severidad: 'success'
       });
-    } else {
-      insights.push({
-        tipo: 'sleep_correlation',
-        emoji: '📊',
-        texto: <>Cuando duermes menos de <strong>7h</strong>, tu cumplimiento baja un <strong>32%</strong>.</>,
-        severidad: 'warning'
-      });
     }
+    // Eliminado: fallback fake "cuando duermes menos de 7h baja 32%"
     
     // Streaks record
     const topStreak = streaks[0];
@@ -731,22 +731,22 @@ function useResumenData(rango) {
       lastMed = mediciones[mediciones.length - 1];
     }
     
-    // Deltas calculate vs first measurement ever (mockup: peso 72.4kg, delta -1.8kg vs 12 abr first)
+    // Deltas: comparar vs primera medición registrada
     const absoluteFirstMed = mediciones.length > 0 ? mediciones[0] : null;
     
-    const physicalMetrics = {
-      peso: lastMed?.peso || 72.4,
+    const physicalMetrics = lastMed ? {
+      peso: lastMed.peso || null,
       pesoDelta: (lastMed && absoluteFirstMed) ? lastMed.peso - absoluteFirstMed.peso : 0,
-      cintura: lastMed?.cintura || 82,
+      cintura: lastMed.cintura || null,
       cinturaDelta: (lastMed && absoluteFirstMed) ? lastMed.cintura - absoluteFirstMed.cintura : 0,
-      cardio: lastMed?.cardio || 5.2,
+      cardio: lastMed.cardio || null,
       cardioDelta: (lastMed && absoluteFirstMed) ? lastMed.cardio - absoluteFirstMed.cardio : 0,
       beforePhotoUrl,
       afterPhotoUrl,
       beforePhotoDate,
       afterPhotoDate
-    };
-    
+    } : null;
+
     let daysWithActivityLogged = 0;
     dateStringsCurrent.forEach(dStr => {
       const dData = daysData[dStr];

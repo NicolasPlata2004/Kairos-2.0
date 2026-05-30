@@ -300,6 +300,22 @@ const storeActions = {
     saveState();
   },
 
+  // Agregar un bloque a un día existente (usado por reagendar)
+  addBlockToDay: (dateString, block) => {
+    const day = currentState.days[dateString] || { blocks: [], checkin: null };
+    currentState = {
+      ...currentState,
+      days: {
+        ...currentState.days,
+        [dateString]: {
+          ...day,
+          blocks: [...day.blocks, block]
+        }
+      }
+    };
+    saveState();
+  },
+
   // Bulk replace all days (used by scheduler)
   setDays: (daysObj) => {
     currentState = { ...currentState, days: daysObj };
