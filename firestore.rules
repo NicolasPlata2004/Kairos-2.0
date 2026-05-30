@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Solo los usuarios autenticados pueden acceder sus propios datos
+    match /users/{uid} {
+      allow read, write: if request.auth.uid == uid;
+    }
+
+    // (opcional) si tienes colecciones compartidas, agrégalas acá
+    // match /public/{doc=**} {
+    //   allow read: if true;
+    //   allow write: if false;
+    // }
+  }
+}

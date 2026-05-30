@@ -460,7 +460,7 @@ function OnbStep4({ theme = 'light', onNext, onBack }) {
       const actData = {
         name, categoryId, type, tracking,
         frequency: type === 'flexible' ? { perWeek, durationMin } : undefined,
-        schedule: type === 'fijo' ? { days, startTime, endTime } : undefined,
+        schedule: type === 'fixed' ? { days, startTime, endTime } : undefined,
         goal: tracking === 'quant' ? goal : undefined,
         unit: tracking === 'quant' ? unit : undefined
       };
@@ -549,8 +549,8 @@ function OnbStep4({ theme = 'light', onNext, onBack }) {
         <div className="k-label" style={{marginBottom:8}}>Actividades</div>
         {activities.map((a) => {
           const colorClassOrHex = getCatColor(a.categoryId);
-          let subText = `${getCatLabel(a.categoryId)} · ${a.type === 'fijo' ? 'Fijo' : 'Flexible'} · ${a.tracking}`;
-          if (a.type === 'fijo' && a.schedule) {
+          let subText = `${getCatLabel(a.categoryId)} · ${a.type === 'fixed' ? 'Fijo' : 'Flexible'} · ${a.tracking}`;
+          if (a.type === 'fixed' && a.schedule) {
             subText += ` · ${a.schedule.days.length} días`;
           } else if (a.type === 'flexible' && a.frequency) {
             subText += ` · ${a.frequency.perWeek}x/sem`;
@@ -637,7 +637,7 @@ function OnbStep4({ theme = 'light', onNext, onBack }) {
 
             <select value={type} onChange={e => setType(e.target.value)} style={{padding:'10px 12px', borderRadius:8, border:'1px solid var(--k-border)', background:'transparent', color:'var(--k-text)', fontSize:14}}>
               <option value="flexible">Flexible (agendado aut.)</option>
-              <option value="fijo">Fijo</option>
+              <option value="fixed">Fijo</option>
             </select>
 
             <select value={tracking} onChange={e => setTracking(e.target.value)} style={{padding:'10px 12px', borderRadius:8, border:'1px solid var(--k-border)', background:'transparent', color:'var(--k-text)', fontSize:14}}>
@@ -746,7 +746,7 @@ function OnbStep5({ theme = 'light', onNext, onBack }) {
   activities.forEach(a => {
     if (a.type === 'flexible' && a.frequency) {
       actHours += (a.frequency.perWeek * a.frequency.durationMin) / 60;
-    } else if (a.type === 'fijo' && a.schedule) {
+    } else if (a.type === 'fixed' && a.schedule) {
       let [h1, m1] = a.schedule.startTime.split(':').map(Number);
       let [h2, m2] = a.schedule.endTime.split(':').map(Number);
       let start = h1 * 60 + m1;
@@ -800,7 +800,7 @@ function OnbStep5({ theme = 'light', onNext, onBack }) {
             let actDur = 0;
             if (a.type === 'flexible' && a.frequency) {
               actDur = (a.frequency.perWeek * a.frequency.durationMin) / 60;
-            } else if (a.type === 'fijo' && a.schedule) {
+            } else if (a.type === 'fixed' && a.schedule) {
               let [h1, m1] = a.schedule.startTime.split(':').map(Number);
               let [h2, m2] = a.schedule.endTime.split(':').map(Number);
               let start = h1 * 60 + m1;

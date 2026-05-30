@@ -366,6 +366,9 @@ function HoyScreen({ theme = 'light', onTab, onOpenReorganize, onOpenCheckin }) 
 
       <div className="k-body" style={{paddingTop:6}}>
         {/* Smart suggestion banner (only on today) */}
+        {/*
+          TODO: Reactivar cuando tengamos insights reales (v1.5).
+          Por ahora el texto es hardcoded ("por la mañana") y los insights falsos pierden credibilidad.
         {isToday && blocks.length > 0 && (
           <SuggestionBanner
             icon="⚡"
@@ -374,6 +377,7 @@ function HoyScreen({ theme = 'light', onTab, onOpenReorganize, onOpenCheckin }) 
             secondary="Ignorar"
           />
         )}
+        */}
 
         {/* Empty state */}
         {blocks.length === 0 && (

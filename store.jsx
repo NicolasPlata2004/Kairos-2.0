@@ -534,5 +534,8 @@ Object.assign(window, {
   storeActions
 });
 
-// Auto seed deterministic mock data if store has no data logged
-storeActions.seedMockData();
+// Solo inyectar mock data en desarrollo o si se pasa ?seed=1 en URL
+if (window.location.search.includes('seed=1')) {
+  console.log('[DEV] Inyectando mock data para testing...');
+  storeActions.seedMockData();
+}

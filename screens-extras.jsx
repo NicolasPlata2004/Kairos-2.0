@@ -127,9 +127,17 @@ function ModalReorganizar({ theme = 'light', onClose }) {
 // Modal: Check-in nocturno
 // ─────────────────────────────────────────────
 function ModalCheckin({ theme = 'light', onClose }) {
-  const [mood, setMood] = React.useState(2);
-  const [note, setNote] = React.useState('');
+  const today = new Date().toISOString().split('T')[0];
+  const existing = (window.storeActions.getState().days[today] || {}).checkin || {};
+  const [mood, setMood] = React.useState(existing.mood ?? 2);
+  const [note, setNote] = React.useState(existing.note || '');
   const moods = ['😞','😐','🙂','😊','🤩'];
+
+  const handleSave = () => {
+    window.storeActions.updateDayCheckin(today, { mood, note: note || null });
+    console.log(`[CHECK-IN] Guardado para ${today}: mood=${mood}, note="${note}"`);
+    onClose();
+  };
 
   return (
     <PhoneFrame theme={theme}>
@@ -189,7 +197,7 @@ function ModalCheckin({ theme = 'light', onClose }) {
 
             <div style={{display:'flex', gap:10}}>
               <button onClick={onClose} className="k-btn k-btn-secondary" style={{flex:1}}>Saltar</button>
-              <button onClick={onClose} className="k-btn k-btn-primary" style={{flex:1}}>Guardar</button>
+              <button onClick={handleSave} className="k-btn k-btn-primary" style={{flex:1}}>Guardar</button>
             </div>
           </div>
         </div>
